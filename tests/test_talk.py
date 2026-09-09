@@ -256,6 +256,12 @@ check("grants: all granted", t.grants_from_health(ok_all),
 check("grants: unknown until the daemon runs", t.grants_from_health({})[0], False)
 check("grants: one denied fails", t.grants_from_health({"grants": {"microphone": "denied", "accessibility": True, "input_monitoring": "granted"}})[0], False)
 
+# ---- model download integrity
+_hf = os.path.join(tempfile.mkdtemp(), "abc"); open(_hf, "wb").write(b"abc")
+check("sha256_of hashes file content", t.sha256_of(_hf),
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+check("pinned weight hashes are 64-hex", all(len(h) == 64 and set(h) <= set("0123456789abcdef") for h in t.MLX_SHA256.values()), True)
+
 # ---- report
 fails = [r for r in results if not r[0]]
 w = max(len(n) for _, n, _ in results)

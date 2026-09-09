@@ -20,7 +20,7 @@ from datetime import datetime
 import numpy as np
 import sounddevice as sd
 
-VERSION = "3.0.1"                # keep in sync with the VERSION file (CI checks)
+VERSION = "3.0.2"                # keep in sync with the VERSION file (CI checks)
 STATE = os.environ.get("TALK_SPEAK_HOME") or os.path.expanduser("~/.talk-speak")
 LAUNCHD_LABEL = "com.studentofai.talk-speak"
 
@@ -412,6 +412,10 @@ def log(msg):
 # ---------------------------------------------------------------- whisper
 MLX_REPO = _p("models/whisper-large-v3-turbo")   # `talk-speak talk warm` fetches it
 MLX_WEIGHTS_BYTES = 1613977612                      # a partial download must not be loaded
+MLX_SHA256 = {   # mlx-community/whisper-large-v3-turbo at main, from the Hub API on 2026-09-09; {} skips the check
+    "config.json": "b34fc29e4e11e0a25e812775dd67f4dd16fc2c8eb43d28ae25ff7d660ecb6379",
+    "weights.safetensors": "951ed3fc1203e6a62467abb2144a96ce7eafca8fa77e3704fdb8635ff3e7f8a6",
+}
 _backend = None                                     # "mlx" | "cpu"
 
 
@@ -1371,13 +1375,39 @@ def doctor():
     sys.exit(0 if fails == 0 else 1)
 
 
+def sha256_of(path: str) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def verify_weights() -> bool:
+    """Every file in MLX_SHA256 must hash right; a mismatch is moved aside as *.bad so
+    mlx_ready() stops seeing it and the CPU fallback takes over. Fails closed."""
+    bad = []
+    for name, want in MLX_SHA256.items():
+        dest = os.path.join(MLX_REPO, name)
+        if not os.path.exists(dest) or sha256_of(dest) != want:
+            bad.append(name)
+    for name in bad:
+        dest = os.path.join(MLX_REPO, name)
+        if os.path.exists(dest):
+            os.replace(dest, dest + ".bad")
+    if bad:
+        print("CHECKSUM MISMATCH: %s moved aside as *.bad; run warm again" % ", ".join(bad))
+    return not bad
+
+
 def warm_weights() -> bool:
-    """Fetch the MLX weights with resumable curl. Prints the size before starting."""
+    """Fetch the MLX weights with resumable curl, then verify them against pinned hashes."""
     base = "https://huggingface.co/mlx-community/whisper-large-v3-turbo/resolve/main/"
     os.makedirs(MLX_REPO, exist_ok=True)
     if mlx_ready():
-        print("mlx weights already present in %s" % MLX_REPO)
-        return True
+        print("mlx weights already present in %s; verifying checksums" % MLX_REPO)
+        return verify_weights() if MLX_SHA256 else True
     print("fetching whisper-large-v3-turbo (%.2f GB) into %s" % (MLX_WEIGHTS_BYTES / 1e9, MLX_REPO))
     for name, want in (("config.json", 1), ("weights.safetensors", MLX_WEIGHTS_BYTES)):
         dest = os.path.join(MLX_REPO, name)
@@ -1392,6 +1422,8 @@ def warm_weights() -> bool:
         else:
             print("FAILED to fetch %s" % name)
             return False
+    if MLX_SHA256 and not verify_weights():
+        return False
     ok = mlx_ready()
     print("mlx weights %s" % ("ready" if ok else "INCOMPLETE — run warm again"))
     return ok

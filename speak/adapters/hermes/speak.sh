@@ -8,6 +8,7 @@ MUT="$STATE/speak.muted"
 platform=$(printf '%s' "$payload" | jq -r '.extra.platform // .platform // "hermes"')
 sid=$(printf '%s' "$payload" | jq -r '.session_id // .extra.session_id // empty')
 KEY="${sid:-hermes-$platform}"
+case "$KEY" in ''|.|..|*[!A-Za-z0-9._-]*) KEY="hermes";; esac   # a session key is a path component: letters, digits, dot, dash, underscore
 printf '%s' "$KEY" > "$STATE/speak.session"
 mkdir -p "$STATE/speak.alive"; : > "$STATE/speak.alive/$KEY"
 if [ -f "$MUT/PENDING" ]; then mv -f "$MUT/PENDING" "$MUT/$KEY"; fi

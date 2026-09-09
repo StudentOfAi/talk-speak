@@ -7,6 +7,7 @@ INPUT=$(cat)
 [ "$TALK_SPEAK" = "off" ] && exit 0
 [ "$CLAUDE_SPEAK" = "off" ] && exit 0   # headless runners (`claude -p` from a LaunchAgent) stay silent
 SID=$(printf '%s' "$INPUT" | /usr/bin/python3 -c 'import sys,json; print(json.load(sys.stdin).get("session_id",""))' 2>/dev/null)
+case "$SID" in ''|.|..|*[!A-Za-z0-9._-]*) SID="";; esac   # a session id is a path component: letters, digits, dot, dash, underscore
 MUT="$STATE/speak.muted"
 if [ -n "$SID" ]; then
   printf '%s' "$SID" > "$STATE/speak.session"

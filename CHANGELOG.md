@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.2 (2026-09-09): security pass
+
+- The speak engine and `speak again` no longer splice the voice and rate files into shell text; the values reach `say` as arguments. A quote in `speak.voice` was shell before. `speak rate` takes digits only and `speak voice` a plain voice name.
+- Every hook accepts a session id only as a plain path component (letters, digits, dot, dash, underscore).
+- `talk-speak talk warm` verifies the model files against pinned SHA-256 hashes and moves a mismatch aside as `*.bad`, so the CPU fallback takes over instead of a bad file loading.
+- `--uninstall --purge` refuses to remove `/` or the home directory.
+- CI actions pinned to commit SHAs; CodeQL (Python) runs on every push; a `tempfile.mktemp` in a test replaced with `mkstemp`.
+
 ## 3.0.1 (2026-09-09): validation pass
 
 - The launchd agent passes `TALK_SPEAK_HOME` to the stub. Before, an install with a custom state dir never started: the stub looked in `~/.talk-speak`, found no venv and exited.

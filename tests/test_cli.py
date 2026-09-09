@@ -81,6 +81,20 @@ class Speak(Sandbox):
         self.assertEqual((rc, out), (0, "speaking last reply"))
         self.assertIn("last-reply.replay.txt", self.wait_log())
 
+    def test_again_with_a_quoted_voice_is_not_shell(self):
+        with open(self.path("last-reply.txt"), "w") as f:
+            f.write("previous reply\n")
+        marker = self.path("PWNED")
+        with open(self.path("speak.voice"), "w") as f:
+            f.write("x'; touch %s; echo '" % marker)
+        self.run_cli("speak", "again"); log = self.wait_log(); time.sleep(0.3)
+        self.assertFalse(os.path.exists(marker)); self.assertIn("-v x'; touch", log)
+
+    def test_rate_and_voice_reject_bad_input(self):
+        rc, out = self.run_cli("speak", "rate", "fast"); self.assertEqual(rc, 2); self.assertFalse(os.path.exists(self.path("speak.rate")))
+        rc, out = self.run_cli("speak", "voice", "x'; touch /tmp/x"); self.assertEqual(rc, 2); self.assertFalse(os.path.exists(self.path("speak.voice")))
+        rc, out = self.run_cli("speak", "voice", "Eddy (English (US))"); self.assertEqual(rc, 0)
+
     def test_unknown_subcommand_is_usage(self):
         rc, out = self.run_cli("speak", "bogus"); self.assertEqual(rc, 2); self.assertIn("usage", out)
 

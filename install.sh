@@ -61,6 +61,7 @@ if [ "$UNINSTALL" = 1 ]; then
   done
   run rm -f "$BIN/$NAME"
   if [ "$PURGE" = 1 ]; then
+    case "$STATE" in ""|/|"$HOME"|"$HOME/") echo "refusing to remove '$STATE' (TALK_SPEAK_HOME must be a directory of its own)"; exit 1;; esac
     run rm -rf "$STATE"
     run identity_delete
     echo "Removed everything, including $STATE and the '$IDENTITY' signing identity."

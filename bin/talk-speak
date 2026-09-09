@@ -112,15 +112,18 @@ speak_silence() {   # stop whatever is being spoken right now
   pkill -x say 2>/dev/null
   return 0
 }
-speak_rate() { cat "$STATE/speak.rate" 2>/dev/null || echo 195; }
+speak_rate() { local r; r=$(cat "$STATE/speak.rate" 2>/dev/null); case "$r" in ''|*[!0-9]*) echo 195;; *) echo "$r";; esac; }
 speak() {
   case "${1:-toggle}" in
     on) touch "$F"; echo "speak: ON";;
     off) rm -f "$F"; speak_silence; echo "speak: OFF";;
     toggle) if [ -f "$F" ]; then rm -f "$F"; speak_silence; echo "speak: OFF"; else touch "$F"; echo "speak: ON"; fi;;
     stop) speak_silence; echo "stopped";;
-    rate) echo "${2:-195}" > "$STATE/speak.rate"; echo "rate: ${2:-195} wpm";;
-    voice) if [ -n "$2" ]; then echo "$2" > "$STATE/speak.voice"; else rm -f "$STATE/speak.voice"; fi; echo "voice: ${2:-system default}";;
+    rate) local r="${2:-195}"
+      case "$r" in ''|*[!0-9]*) echo "rate: words per minute as a number, e.g. 180"; return 2;; esac
+      echo "$r" > "$STATE/speak.rate"; echo "rate: $r wpm";;
+    voice) [[ "${2:-}" =~ ^[A-Za-z0-9._()[:space:]-]*$ ]] || { echo "voice: a voice name only (say -v '?' lists them)"; return 2; }
+      if [ -n "${2:-}" ]; then echo "$2" > "$STATE/speak.voice"; else rm -f "$STATE/speak.voice"; fi; echo "voice: ${2:-system default}";;
     mute) mkdir -p "$MUT"
       if [ -n "$2" ]; then touch "$MUT/$2"; echo "speak: muted session ${2:0:8}"
       else speak_silence; touch "$MUT/PENDING"; echo "speak: muting this session (silent from the next reply)"; fi
@@ -149,11 +152,14 @@ speak() {
       if [ -f "$STATE/last-reply.txt" ]; then
         cp "$STATE/last-reply.txt" "$STATE/last-reply.replay.txt"
         local r v; r=$(speak_rate); v=$(cat "$STATE/speak.voice" 2>/dev/null)
-        # the pidfile tells the engine a replay is running so a new reply queues behind it
-        nohup bash -c "echo \$\$ > '$STATE/speak.replay'
-          if [ -n '$v' ]; then say -v '$v' -r $r -f '$STATE/last-reply.replay.txt'
-          else say -r $r -f '$STATE/last-reply.replay.txt'; fi
-          rm -f '$STATE/speak.replay'" >/dev/null 2>&1 &
+        # the pidfile tells the engine a replay is running so a new reply queues behind it;
+        # rate and voice travel through the environment, never through shell text
+        # shellcheck disable=SC2016   # the single-quoted script expands inside the child on purpose
+        STATE="$STATE" R="$r" V="$v" nohup bash -c '
+          echo $$ > "$STATE/speak.replay"
+          if [ -n "$V" ]; then say -v "$V" -r "$R" -f "$STATE/last-reply.replay.txt"
+          else say -r "$R" -f "$STATE/last-reply.replay.txt"; fi
+          rm -f "$STATE/speak.replay"' >/dev/null 2>&1 &
       fi
       echo "speaking last reply";;
     *) usage;;

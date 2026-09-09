@@ -1,6 +1,6 @@
 # PRD: talk-speak (hold-space dictation + spoken replies for macOS agent harnesses)
 
-Status: v1.0, 2026-09-09. Describes release v3.0.1 of
+Status: v1.1, 2026-09-09. Describes release v3.0.2 of
 https://github.com/StudentOfAi/talk-speak as shipped. Owner: StudentOfAi.
 
 Purpose: take a private, working hold-space dictation + spoken-replies setup
@@ -77,11 +77,13 @@ until it lands). The time on a fresh Mac has not been recorded yet.
 
 | Check | How | Where | Last result |
 |---|---|---|---|
-| Daemon rules | `<venv>/bin/python tests/test_talk.py`: the three fail-open spacebar rules, healing state machine, spoken punctuation, continuation spacing, vocab corrections, device knob, history gate, grant report | local, CI | 81/81 |
-| Speak, hooks, CLI | `python3 -m unittest tests.test_speak tests.test_hooks tests.test_cli` | local, CI | 35/35 |
+| Daemon rules | `<venv>/bin/python tests/test_talk.py`: the three fail-open spacebar rules, healing state machine, spoken punctuation, continuation spacing, vocab corrections, device knob, history gate, grant report, hash helper | local, CI | 83/83 |
+| Speak, hooks, CLI | `python3 -m unittest tests.test_speak tests.test_hooks tests.test_cli` (incl. shell-injection, traversal and input-validation regressions) | local, CI | 40/40 |
 | Scripts | `shellcheck -x` on every `.sh`, the CLI and the Claw hook | local, CI | clean |
 | Stub | `swiftc -O talk/app/Stub.swift` | local, CI | compiles (64 KB arm64) |
 | Version | `VERSION` equals `talkd.py --version` | CI | equal |
+| Static analysis | CodeQL default setup (Python) on every push; Dependabot alerts and security updates; secret scanning with push protection | GitHub | 0 open alerts |
+| Independent review | a security review of every script, the daemon, the stub, the hooks and CI, read-only, 2026-09-09 | local | 5 findings, all fixed in 3.0.2 (gaps 17 to 21) |
 | Installer | `./install.sh --dry-run` and `--uninstall --dry-run` print the plan and write nothing | local, CI | clean, home untouched |
 | Pinned deps | `python3 -m venv` + `pip install -r requirements.txt` on a fresh venv | local, CI | 18 s with a warm cache, 16 to 32 s cold, 1.3 GB |
 | Sandboxed install | `./install.sh --no-start` with every target directory redirected and a throwaway identity, then `--uninstall --purge` | local, before the tag | see ACCEPTANCE.md |
@@ -335,6 +337,11 @@ check, `./install.sh --dry-run`. Green on every push since the first.
 | 14 | 3.0.1: LaunchAgent did not pass `TALK_SPEAK_HOME`; a custom state dir never started | `EnvironmentVariables` in the template; stub verified with and without the variable |
 | 15 | 3.0.1: `--uninstall` failed when the state dir did not exist | guarded; reproduced then re-run to exit 0 |
 | 16 | 3.0.1: the PRD described the pre-release state; PLAN.md carried a personal name | this document; PLAN.md scrubbed |
+| 17 | 3.0.2: the speak engine and `speak again` spliced `speak.voice` and `speak.rate` into `bash -c` text; a quote in the voice file ran as shell on every spoken reply | values travel through the environment and reach `say` as arguments; rate digits-only; `speak rate` and `speak voice` validate input; two regression tests reproduce the injection |
+| 18 | 3.0.2: the model download had no integrity check beyond a byte count | `MLX_SHA256` pinned from the Hub API; `warm` verifies and moves a mismatch aside as `*.bad` so the CPU fallback takes over |
+| 19 | 3.0.2: `--uninstall --purge` would `rm -rf` whatever `TALK_SPEAK_HOME` said, including `/` or the home directory | refused for `""`, `/`, `$HOME` |
+| 20 | 3.0.2: hooks used the payload's `session_id` as a path component unchecked | every hook accepts letters, digits, dot, dash, underscore only; regression test with `../escaped` |
+| 21 | 3.0.2: CI actions on mutable tags; a `tempfile.mktemp` in a test (CodeQL) | actions pinned to commit SHAs; `mkstemp` |
 
 ---
 
@@ -401,3 +408,8 @@ the result goes into its Runs table.
   81 daemon checks, shellcheck, stub compile, executable bits; zero secret
   patterns in tree or history; every README and docs link resolves; the MLX
   weights URL serves 1,613,977,612 bytes, the size the daemon checks for.
+- 2026-09-09: security pass. CodeQL (Python) enabled and green after one fix;
+  an independent read-only review found one shell injection through the voice
+  and rate state files, an unverified model download, an unguarded purge,
+  unchecked session ids in hooks and unpinned CI actions. All five fixed with
+  regression tests first (red, then green); v3.0.2.

@@ -1,5 +1,5 @@
 """speak engine, Claude Code transcript reader and prune. Run: python3 -m unittest tests.test_speak"""
-import os, shutil, stat, subprocess, tempfile, time, unittest
+import json, os, shutil, stat, subprocess, tempfile, time, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENGINE = os.path.join(ROOT, "speak", "speak-text.sh")
@@ -83,6 +83,30 @@ class Engine(unittest.TestCase):
         self.touch("speak.env", 'SPEAKING_FLAG="%s"\n' % custom)
         self.run_engine("hello")
         self.assertTrue(wait_for(custom)); self.assertTrue(wait_for(self.log))
+
+    def test_voice_with_a_quote_is_one_argument_never_shell(self):
+        # speak.voice is a state file; its content must reach `say` as argv, never as shell text
+        self.touch("speak.on"); marker = os.path.join(self.state, "PWNED")
+        self.touch("speak.voice", "x'; touch %s; echo '" % marker)
+        self.run_engine("hello"); self.assertTrue(wait_for(self.log)); time.sleep(0.4)
+        self.assertFalse(os.path.exists(marker))
+        self.assertIn("-v x'; touch", open(self.log).read())
+
+    def test_non_numeric_rate_falls_back_to_default(self):
+        self.touch("speak.on"); self.touch("speak.rate", "180; touch %s" % os.path.join(self.state, "PWNED"))
+        self.run_engine("hello"); self.assertTrue(wait_for(self.log)); time.sleep(0.3)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "PWNED")))
+        self.assertIn("-r 195", open(self.log).read())
+
+
+class ClaudeCodeHooks(unittest.TestCase):
+    def test_session_id_with_path_traversal_is_ignored(self):
+        state, _ = make_state()
+        hook = os.path.join(ROOT, "speak", "claude-code", "speak-last.sh")
+        payload = json.dumps({"session_id": "../escaped", "transcript_path": "/nonexistent"})
+        subprocess.run(["bash", hook], input=payload, text=True, env={**os.environ, "TALK_SPEAK_HOME": state})
+        self.assertFalse(os.path.exists(os.path.join(state, "escaped")))
+        self.assertFalse(os.path.exists(os.path.join(state, "speak.alive", "..", "escaped")))
 
 
 class LastReply(unittest.TestCase):

@@ -64,5 +64,6 @@ Any uppercase constant of `talkd.py` can be overridden, for example `{"PTT_MIN_H
 | `RESTART_MAX` | `3` | ...to this many, then we stop and ask for hands |
 | `HEARTBEAT_S` | `10.0` |  |
 | `MLX_REPO` | `_p("models/whisper-large-v3-turbo")` | `talk-speak talk warm` fetches it |
+| `MLX_SHA256` | pinned hashes of `config.json` and `weights.safetensors` | `warm` verifies against these; `{}` skips the check (another model in `MLX_REPO`) |
 | `MAX_PROMPT_CHARS` | `850` | whisper truncates the prompt at ~224 tokens |
 | `CONTINUATION_S` | `120.0` | two dictations further apart than this are not one thought |

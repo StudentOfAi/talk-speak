@@ -20,7 +20,11 @@ if [ -n "$1" ]; then TEXT="$1"; else TEXT=$(cat); fi
 [ -n "$(printf '%s' "$TEXT" | tr -d '[:space:]')" ] || exit 0
 printf '%s\n' "$TEXT" > "$STATE/last-reply.txt"
 RATE=$(cat "$STATE/speak.rate" 2>/dev/null || echo 195)
+case "$RATE" in ''|*[!0-9]*) RATE=195;; esac         # digits only; anything else is the default
 VOICE=$(cat "$STATE/speak.voice" 2>/dev/null)
+# The background speaker reads these from its environment. Nothing read from a file is
+# ever spliced into shell text: a quote in speak.voice is a quote, not code.
+export STATE RATE VOICE SAY_BIN SPEAKING_FLAG
 # shellcheck disable=SC2329   # invoked indirectly through `declare -f`
 say_file() {
   # the flag exists while we speak: an always-on listener can ignore the assistant's own voice
@@ -31,15 +35,14 @@ say_file() {
   wait $!
   rm -f "$SPEAKING_FLAG" "$STATE/speak.pid"
 }
-VARS="STATE='$STATE'; RATE='$RATE'; VOICE='$VOICE'; SAY_BIN='$SAY_BIN'; SPEAKING_FLAG='$SPEAKING_FLAG'"
 REPLAY="$STATE/speak.replay"
-if [ -f "$REPLAY" ] && kill -0 "$(cat "$REPLAY" 2>/dev/null)" 2>/dev/null; then
+RP=$(cat "$REPLAY" 2>/dev/null); case "$RP" in ''|*[!0-9]*) RP=0;; esac; export RP
+if [ "$RP" != 0 ] && kill -0 "$RP" 2>/dev/null; then
   [ "$TEXT" = "speaking last reply" ] && exit 0
-  RP=$(cat "$REPLAY")
-  nohup bash -c "while kill -0 $RP 2>/dev/null; do sleep 1; done; $(declare -f say_file); $VARS; say_file" >/dev/null 2>&1 &
+  nohup bash -c "while kill -0 \"\$RP\" 2>/dev/null; do sleep 1; done; $(declare -f say_file); say_file" >/dev/null 2>&1 &
   exit 0
 fi
 rm -f "$REPLAY"
 [ -f "$STATE/speak.pid" ] && kill "$(cat "$STATE/speak.pid")" 2>/dev/null   # a newer reply supersedes the older one
-nohup bash -c "$(declare -f say_file); $VARS; say_file" >/dev/null 2>&1 &
+nohup bash -c "$(declare -f say_file); say_file" >/dev/null 2>&1 &
 exit 0

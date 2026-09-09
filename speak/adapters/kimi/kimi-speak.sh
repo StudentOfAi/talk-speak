@@ -8,6 +8,7 @@ SID=$(printf '%s' "$PAYLOAD" | /usr/bin/python3 -c '
 import sys, json
 try: print(json.load(sys.stdin).get("session_id", ""))
 except Exception: pass' 2>/dev/null)
+case "$SID" in ''|.|..|*[!A-Za-z0-9._-]*) SID="";; esac   # a session id is a path component: letters, digits, dot, dash, underscore
 if [ -n "$SID" ]; then
   printf '%s' "$SID" > "$STATE/speak.session"
   mkdir -p "$STATE/speak.alive"; : > "$STATE/speak.alive/$SID"
