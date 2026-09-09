@@ -1,0 +1,171 @@
+#!/bin/bash
+# talk-speak — hold-space dictation (talk) and spoken replies (speak) for macOS agent harnesses.
+#   talk-speak talk  on|off|toggle|restart|ensure|status|health|doctor|version|log [N]|test|levels|typetest|simulate-failure|heal|selfcheck|warm
+#   talk-speak speak on|off|toggle|status|again|stop|rate N|voice NAME|mute [ID]|unmute [ID|all]|muted
+#   talk-speak doctor | version | paths
+# Everything lives in $TALK_SPEAK_HOME (default ~/.talk-speak).
+STATE="${TALK_SPEAK_HOME:-$HOME/.talk-speak}"
+NAME="talk-speak"
+LABEL="com.studentofai.talk-speak"
+APP="${TALK_SPEAK_APP_DIR:-$HOME/Applications}/$NAME.app"
+PLIST="${TALK_SPEAK_LAUNCH_AGENTS:-$HOME/Library/LaunchAgents}/$LABEL.plist"
+DAEMON="$STATE/talkd.py"
+PY="$STATE/venv/bin/python"
+PIDF="$STATE/talk.pid"
+DISABLED="$STATE/talk.disabled"
+HEALTH="$STATE/talk.health.json"
+VERSION_FILE="$STATE/VERSION"
+
+usage() {
+  cat <<USAGE
+usage: talk-speak talk  on|off|toggle|restart|ensure|status|health|doctor|version|log [N]|test|levels|typetest|simulate-failure|heal|selfcheck|warm
+       talk-speak speak on|off|toggle|status|again|stop|rate N|voice NAME|mute [ID]|unmute [ID|all]|muted
+       talk-speak doctor | version | paths
+USAGE
+  exit 2
+}
+
+version() {
+  if [ -f "$VERSION_FILE" ]; then cat "$VERSION_FILE"
+  else cat "$(cd "$(dirname "$(readlink "$0" 2>/dev/null || echo "$0")")/.." && pwd)/VERSION" 2>/dev/null || echo unknown; fi
+}
+
+# ---------------------------------------------------------------- talk (the daemon, via launchd)
+running() {
+  [ -f "$PIDF" ] || return 1
+  local pid; pid=$(cat "$PIDF")
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null || return 1
+  ps -o command= -p "$pid" 2>/dev/null | /usr/bin/grep -q talkd   # pid reuse after reboot is not "running"
+}
+talk_start() {
+  if running; then echo "talk: already ON (pid $(cat "$PIDF"))"; return 0; fi
+  [ -f "$PLIST" ] || { echo "talk: not installed ($PLIST missing) — run install.sh"; return 1; }
+  launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null     # no-op if already loaded
+  launchctl kickstart -k "gui/$(id -u)/$LABEL" 2>/dev/null
+  for _ in $(seq 1 20); do running && break; sleep 0.5; done
+  if running; then
+    echo "talk: ON (hold SPACE anywhere to dictate into the focused field; space also cuts speech off)"; return 0
+  fi
+  echo "talk: FAILED to start — check $STATE/talk.err"; return 1
+}
+talk_stop() {
+  touch "$DISABLED"                                        # `off` wins over KeepAlive and login
+  launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null      # SIGTERM → stub → daemon (frees CoreAudio)
+  if running; then
+    local pid; pid=$(cat "$PIDF")
+    for _ in $(seq 1 25); do kill -0 "$pid" 2>/dev/null || break; sleep 0.2; done
+    kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null
+  fi
+  rm -f "$PIDF"
+  echo "talk: OFF"
+}
+talk_status() {
+  if running; then
+    echo "talk: ON (pid $(cat "$PIDF"))"
+    [ -f "$HEALTH" ] && /usr/bin/python3 -c '
+import json,sys,time
+d=json.load(open(sys.argv[1]))
+age=time.time()-d.get("ts",0)
+print("  state:     %s%s" % (d.get("state"), "" if age<90 else "  (heartbeat %.0fs STALE)"%age))
+print("  audio:     %s" % ("healthy" if d.get("audio_ok") else "DEAD - spacebar released to normal typing"))
+print("  backend:   %s" % (d.get("backend") or "warming"))
+g=d.get("grants") or {}
+print("  grants:    mic %s, accessibility %s, input monitoring %s" % (g.get("microphone","?"), "granted" if g.get("accessibility") else "denied", g.get("input_monitoring","?")))
+print("  uptime:    %.0f min   healed %sx   self-restarts %d" % (d.get("uptime_s",0)/60, d.get("healed"), len(d.get("restarts") or [])))
+if d.get("last_error"): print("  last error: %s" % d["last_error"])
+' "$HEALTH"
+  else
+    echo "talk: OFF"
+  fi
+}
+talk() {
+  case "${1:-toggle}" in
+    on) rm -f "$DISABLED"; talk_start;;
+    off) talk_stop;;
+    toggle) if running; then talk_stop; else rm -f "$DISABLED"; talk_start; fi;;
+    ensure) running && return 0; [ -f "$DISABLED" ] && return 0; talk_start;;
+    restart) talk_stop; sleep 1; rm -f "$DISABLED"; talk_start;;
+    status) talk_status;;
+    health) [ -f "$HEALTH" ] && /usr/bin/python3 -m json.tool < "$HEALTH" || echo "no health file (daemon not running)";;
+    doctor) "$PY" "$DAEMON" --doctor;;
+    version) "$PY" "$DAEMON" --version;;
+    warm) "$PY" "$DAEMON" --warm;;
+    test) "$PY" "$DAEMON" --selftest;;
+    levels) "$PY" "$DAEMON" --levels;;
+    log) tail -n "${2:-20}" "$STATE/talk.log" 2>/dev/null || echo "no log yet";;
+    typetest) echo typetest > "$STATE/talk.trigger"; echo "talk: keystroke permission test fired";;
+    simulate-failure) echo degrade > "$STATE/talk.trigger"; echo "talk: fault injected — spacebar should type normally; healer recovers within ~20s";;
+    heal) echo heal > "$STATE/talk.trigger"; echo "talk: heal requested";;
+    selfcheck) local repo; repo=$(cat "$STATE/repo" 2>/dev/null)
+      [ -f "$repo/tests/test_talk.py" ] || { echo "test suite not found (is $STATE/repo pointing at the clone?)"; return 1; }
+      "$PY" "$repo/tests/test_talk.py";;
+    *) usage;;
+  esac
+}
+
+# ---------------------------------------------------------------- speak (the engine's state)
+F="$STATE/speak.on"
+MUT="$STATE/speak.muted"
+speak_silence() {   # stop whatever is being spoken right now
+  [ -f "$STATE/speak.pid" ] && kill "$(cat "$STATE/speak.pid")" 2>/dev/null
+  [ -f "$STATE/speak.replay" ] && kill "$(cat "$STATE/speak.replay")" 2>/dev/null
+  pkill -x say 2>/dev/null
+  return 0
+}
+speak_rate() { cat "$STATE/speak.rate" 2>/dev/null || echo 195; }
+speak() {
+  case "${1:-toggle}" in
+    on) touch "$F"; echo "speak: ON";;
+    off) rm -f "$F"; speak_silence; echo "speak: OFF";;
+    toggle) if [ -f "$F" ]; then rm -f "$F"; speak_silence; echo "speak: OFF"; else touch "$F"; echo "speak: ON"; fi;;
+    stop) speak_silence; echo "stopped";;
+    rate) echo "${2:-195}" > "$STATE/speak.rate"; echo "rate: ${2:-195} wpm";;
+    voice) if [ -n "$2" ]; then echo "$2" > "$STATE/speak.voice"; else rm -f "$STATE/speak.voice"; fi; echo "voice: ${2:-system default}";;
+    mute) mkdir -p "$MUT"
+      if [ -n "$2" ]; then touch "$MUT/$2"; echo "speak: muted session ${2:0:8}"
+      else speak_silence; touch "$MUT/PENDING"; echo "speak: muting this session (silent from the next reply)"; fi
+      say -r "$(speak_rate)" "Muted. Silent until you unmute." 2>/dev/null &;;
+    unmute) if [ "$2" = "all" ]; then rm -f "$MUT"/* 2>/dev/null; echo "speak: all session mutes cleared"
+      elif [ -n "$2" ]; then rm -f "$MUT/$2"; echo "speak: unmuted session ${2:0:8}"
+      else rm -f "$MUT/PENDING" 2>/dev/null; mkdir -p "$MUT"; touch "$MUT/UNMUTE-PENDING"
+        echo "speak: unmuting this session (voice back from the next reply)"; fi;;
+    muted) local n=0 f
+      for f in "$MUT"/*; do
+        [ -f "$f" ] || continue
+        case "$(basename "$f")" in PENDING|UNMUTE-PENDING) continue;; esac
+        echo "muted: $(basename "$f")"; n=$((n + 1))
+      done
+      [ "$n" = 0 ] && echo "no muted sessions"
+      [ -f "$MUT/PENDING" ] && echo "muted: PENDING (next reply)"; return 0;;
+    status) local v r a; v=$(cat "$STATE/speak.voice" 2>/dev/null); r=$(speak_rate)
+      [ -f "$F" ] && echo "speak: ON (rate $r, voice ${v:-system})" || echo "speak: OFF"
+      a=$(osascript -e 'get volume settings' 2>/dev/null)
+      case "$a" in
+        *"output muted:true"*|*"output volume:0,"*) echo "AUDIO: OUTPUT MUTED OR ZERO — replies speak into silence. fix: osascript -e 'set volume output muted false' -e 'set volume output volume 40'";;
+        "") ;;
+        *) echo "audio: ok (output volume $(echo "$a" | sed -E 's/.*output volume:([0-9]+).*/\1/'))";;
+      esac;;
+    again) speak_silence
+      if [ -f "$STATE/last-reply.txt" ]; then
+        cp "$STATE/last-reply.txt" "$STATE/last-reply.replay.txt"
+        local r v; r=$(speak_rate); v=$(cat "$STATE/speak.voice" 2>/dev/null)
+        # the pidfile tells the engine a replay is running so a new reply queues behind it
+        nohup bash -c "echo \$\$ > '$STATE/speak.replay'
+          if [ -n '$v' ]; then say -v '$v' -r $r -f '$STATE/last-reply.replay.txt'
+          else say -r $r -f '$STATE/last-reply.replay.txt'; fi
+          rm -f '$STATE/speak.replay'" >/dev/null 2>&1 &
+      fi
+      echo "speaking last reply";;
+    *) usage;;
+  esac
+}
+
+# ---------------------------------------------------------------- dispatch
+case "${1:-}" in
+  talk) shift; talk "$@";;
+  speak) shift; speak "$@";;
+  doctor) talk doctor; echo; speak status;;
+  version) version;;
+  paths) printf 'state:   %s\napp:     %s\nplist:   %s\ndaemon:  %s\npython:  %s\nrepo:    %s\n' "$STATE" "$APP" "$PLIST" "$DAEMON" "$PY" "$(cat "$STATE/repo" 2>/dev/null || echo '(not installed)')";;
+  *) usage;;
+esac

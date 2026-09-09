@@ -1,0 +1,11 @@
+# Pinned to the versions measured working on macOS 26.1 / Apple Silicon, 2026-09-09.
+mlx==0.32.2
+mlx-whisper==0.4.3
+openai-whisper==20250625
+numpy==2.4.6
+sounddevice==0.5.6
+pyobjc-core==12.2.2
+pyobjc-framework-Cocoa==12.2.2
+pyobjc-framework-Quartz==12.2.2
+pyobjc-framework-ApplicationServices==12.2.2
+pyobjc-framework-AVFoundation==12.2.2

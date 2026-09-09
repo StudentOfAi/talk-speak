@@ -1,0 +1,25 @@
+# talk.vocab — words whisper should spell the way you do. Edit any time; the daemon
+# reloads on save, no restart. Lines starting with # are comments.
+# [general] is always sent to whisper as context. [code] is added when a terminal
+# or editor has keyboard focus. [corrections] are `regex => replacement` lines run
+# case-insensitively on the transcript after the built-in fix-ups.
+
+[general]
+# your name, your city, your projects, the products you say every day:
+macOS, Mac mini, MacBook, Apple Silicon, Spotlight, Finder, Siri
+Whisper, MLX, transcribe, push to talk
+Claude Code, Codex, Hermes, Kimi, Ollama
+Telegram, WhatsApp, LinkedIn, Reddit
+slash talk, slash speak
+
+[code]
+git, grep, sed, awk, npm, pip, JSON, YAML, API, CLI, repo, commit, branch, rebase, stash
+LaunchAgent, launchctl, osascript, Quartz, CGEvent, event tap, stdout, stderr, venv
+Python, TypeScript, Swift, Rust, Xcode, whisper, talkd, talk-speak
+
+[corrections]
+# whisper mishears product names in predictable ways; fix them here, not in code
+(quad|cloud|clod|clawed)\s+code => Claude Code
+\bclod\b => Claude
+\bher-?meez\b => Hermes
+\bkim+(y|ie|ee|i)\b => Kimi

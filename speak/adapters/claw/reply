@@ -1,0 +1,5 @@
+#!/bin/bash
+# Claw reply-finished hook: speak the reply through the shared engine.
+# Claw exports the final assistant text in $CLAW_REPLY.
+STATE="${TALK_SPEAK_HOME:-$HOME/.talk-speak}"
+printf '%s' "$CLAW_REPLY" | bash "$STATE/bin/speak-text.sh"

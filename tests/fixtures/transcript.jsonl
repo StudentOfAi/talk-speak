@@ -1,0 +1,4 @@
+{"type":"user","message":{"role":"user","content":"do the thing"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Working on it."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"**Done.**\n\n```bash\nls -la\n```\n\nSee the [file](http://example.com/f) and https://example.com/x for details.\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n-code"}]}}
