@@ -94,7 +94,7 @@ class LastReply(unittest.TestCase):
         self.assertFalse(out.rstrip().endswith("-code")); self.assertNotIn("Working on it", out)
 
     def test_hyphenated_words_survive_signature_strip(self):
-        p = tempfile.mktemp(suffix=".jsonl")
+        fd, p = tempfile.mkstemp(suffix=".jsonl"); os.close(fd)
         with open(p, "w") as f:
             f.write('{"type":"assistant","message":{"content":[{"type":"text","text":"It is self-hosted"}]}}\n')
         out = subprocess.run(["/usr/bin/python3", LAST, p], capture_output=True, text=True).stdout

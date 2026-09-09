@@ -324,7 +324,7 @@ check, `./install.sh --dry-run`. Green on every push since the first.
 | 3 | Interpreter pinned to one Homebrew Cellar path in two places | own venv with pinned `requirements.txt` |
 | 4 | The whole speak side (11 files, 5 harnesses) lived outside the repo; hooks were hand-edited into `settings.json` | `speak/`, `lib/hooks.py`, adapters with snippets |
 | 5 | Names infringed the Claude Code trademark rule and collided on GitHub | `talk-speak` everywhere (5.2) |
-| 6 | Personal data in the vocab example, `CORRECTIONS`, README and tests | generic example vocab; corrections moved to `talk.vocab`; names removed from shipped files (see D6 for history) |
+| 6 | Personal data in the vocab example, `CORRECTIONS`, README and tests | generic example vocab; corrections moved to `talk.vocab`; names removed from shipped files and from history (D6) |
 | 7 | `selfcheck` hardcoded one machine's repo path | `~/.talk-speak/repo` |
 | 8 | Bundle version 2.2.0 vs daemon 2.3.0 | `VERSION` is the single source; CI checks it against the daemon; `build.sh` stamps the bundle |
 | 9 | No LICENSE, CHANGELOG, CI, CONTRIBUTING, SECURITY | all present |
@@ -347,13 +347,14 @@ check, `./install.sh --dry-run`. Green on every push since the first.
 - D3 Ship all five harness integrations; the installer wires Claude Code only.
 - D4 Publish under `StudentOfAi`, MIT, private until the author flips it.
 - D5 Transcript history on by default with an off switch.
-- D6 **Open, the author's call:** the git history before the rename still
-  contains the private vocab example (a first name, three place names, private
-  project names) and one absolute home path. The working tree is clean; the
-  history is not. Before flipping public, either squash to a single root commit
-  and re-create the release tag on it, or accept that the old commits are
-  readable. The squash is one force-push; the exact commands are in the
-  release notes for v3.0.1 and in the session that shipped it.
+- D6 History squashed before going public (decided by the author 2026-09-09).
+  The commits before the rename carried the private vocab example (a first
+  name, three place names, private project names) and one absolute home path.
+  The repo now has one root commit whose tree is byte-identical to the last
+  private main; the git author on every commit and tag is the developer
+  identity, never a personal name. Repo public since 2026-09-09 with secret
+  scanning, push protection, Dependabot alerts and security updates, CodeQL
+  (Python) and private vulnerability reporting enabled.
 
 ---
 
@@ -395,3 +396,8 @@ the result goes into its Runs table.
   missing; scripts pin `/usr/bin/grep ... >/dev/null`.
 - 2026-09-09: v3.0.0 pushed private, CI green, release created. Validation pass
   the same day found gaps 14 to 16; v3.0.1.
+- 2026-09-09: history squashed to one root commit, v3.0.1 re-tagged on it, repo
+  flipped public. Verified from an anonymous clone: dry runs, 35 unit tests,
+  81 daemon checks, shellcheck, stub compile, executable bits; zero secret
+  patterns in tree or history; every README and docs link resolves; the MLX
+  weights URL serves 1,613,977,612 bytes, the size the daemon checks for.
